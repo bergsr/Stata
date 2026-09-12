@@ -1,39 +1,50 @@
-*! version 1.0.2  13july2026 R Bergs
-*! Calculates Zipf bend point (Rank - 0.5) and KS-test for city sizes
-
 program define zipfbend, rclass
     version 12.0
     syntax varname(numeric) [if] in [, Generate(string)]
-
-    preserve
     
-    * Restrict sample if if/in is specified
-    keep `if' `in'
+    preserve 
     
-    * Exclude missing and non-positive values, then sort city sizes descending
+    * Exclude missing/non-positive values and sort descending globally
     qui drop if missing(`varlist')
     qui drop if `varlist' <= 0
     qui sort `varlist'
     qui gen long _orig_obs = _n
     qui gsort -`varlist'
     
-    * 1. Generate variables (y = ln(size), x = ln(rank - 0.5))
+    * Generate global rank and log variables for the ENTIRE distribution
     qui gen long _rank = _n
     qui gen double y = ln(`varlist')
     qui gen double x_obs = ln(_rank - 0.5)
     
-    * 2. Linear OLS regression to estimate alpha and beta
+    * 1. Full Sample Regression (Global)
     qui regress y x_obs
     scalar s_alpha = _b[_cons]
-    scalar s_beta  = _b[x_obs]
+    scalar s_beta = _b[x_obs]
     
-    * 3. Calculate estimated x-values: x_est = (y - alpha) / beta
-    qui gen double x_est = (y - s_alpha) / s_beta
+    * 2b. Second regression based ONLY on the absolute first and last obs of TOTAL distribution
+    qui count
+    local global_last = r(N)
+    tempvar global_base
+    qui gen byte `global_base' = (_rank == 1 | _rank == `global_last')
+    qui regress y x_obs if `global_base' == 1
+    scalar b_alpha = _b[_cons]
+    scalar b_beta = _b[x_obs]  // Stable chord slope preserved here!
     
-    * 4. Calculate difference
-    qui gen double diff_x = x_obs - x_est
+    * NOW apply user's if/in restrictions or sample truncation safely
+    if "`if'" != "" {
+        qui keep `if'
+    }
+    if "`in'" != "" {
+        qui keep `in'
+    }
     
-    * Find the maximum positive difference
+    * 3. Calculate estimated x-values based on the STABLE second regression parameters
+    qui gen double x_est = (y - b_alpha) / b_beta 
+    
+    * 4. Calculate difference 
+    qui gen double diff_x = x_obs - x_est 
+    
+    * Find maximum positive difference and corresponding row identifiers
     qui summarize diff_x
     local max_diff = r(max)
     
@@ -43,14 +54,15 @@ program define zipfbend, rclass
     local k_size = `varlist'[_N]
     local k_id   = _orig_obs[_N]
     
-    * 5. Prepare Kolmogorov-Smirnov Test 
+    * 5. Prepare Kolmogorov-Smirnov Test (remains based on Full Sample OLS)
     qui sort `varlist'
     qui gen double cdf_obs = _n / _N
     
-    * Theoretical Pareto CDF based on OLS estimators
+    * Theoretical Pareto CDF based on full sample OLS estimators
     local p_exp = -1 / s_beta
     qui summarize `varlist'
     local s_min = r(min)
+    
     qui gen double cdf_theo = 1 - (`s_min' / `varlist')^(`p_exp')
     
     * Calculate KS test statistic manually (maximum absolute distance)
@@ -69,7 +81,7 @@ program define zipfbend, rclass
     di as text "Estimated Zipf coeff (b):   " as result %9.4f s_beta
     di as text "Implied Pareto exponent:    " as result %9.4f `p_exp'
     di as text "{hline 65}"
-    di as text "Maximum positive difference:" as result %9.4f `max_diff'
+    di as text "Maximum positive difference from baseline:" as result %9.4f `max_diff'
     di as text "-> Occurs at rank:          " as result `k_rank'
     di as text "-> Item size at this obs:   " as result %12.0fc `k_size'
     di as text "{hline 65}"
@@ -84,19 +96,35 @@ program define zipfbend, rclass
     }
     di as text "{hline 65}"
     
-    * If requested, save the calculated difference variable in the original dataset
+    * If requested, handle the generation of variables before restoring
     if "`generate'" != "" {
-        restore
-        qui gen _rank = _n
-        qui gen x_obs = ln(_rank - 0.5)
-        qui gen y_ln = ln(`varlist')
-        qui regress y_ln x_obs
-        qui gen x_est = (y_ln - _b[_cons]) / _b[x_obs]
-        qui gen `generate' = x_obs - x_est
-        di as text "Difference variable '" `generate' "' has been saved to your dataset."
+        * Change the name of your calculated difference to the user-specified name
+        capture drop `generate'
+        qui gen double `generate' = diff_x
+        
+        * Change preserve behavior to change the data tracking on exit
+        restore, not
+        di as text "Residuals variable '" as result "`generate'" as text "' has been saved to your dataset."
     }
     else {
+        * If generate wasn't used, pull the original dataset back unmodified
         restore
     }
+    
+    * 6. Save in r()-Vektor
+    return scalar alpha_full = s_alpha
+    return scalar beta_full  = s_beta
+    return scalar pareto_exp = `p_exp'
+    
+    return scalar alpha_base = b_alpha
+    return scalar beta_base  = b_beta
+    
+    return scalar bend_rank  = `k_rank'
+    return scalar bend_size  = `k_size'
+    return scalar bend_id    = `k_id'
+    return scalar max_diff   = `max_diff'
+    
+    return scalar ks_stat    = `ks_stat'
+    return scalar N          = `global_last'
 
 end

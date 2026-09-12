@@ -30,9 +30,10 @@ ln(Size) = alpha + beta * ln(Rank - 0.5).
 {p 4 4 2}
 The command automatically drops missing and non-positive values before estimation. 
 It identifies a structural "bend point" where the empirical log-rank deviates 
-maximally (positive distance) from the OLS-predicted log-rank. It also performs a 
-manual Kolmogorov-Smirnov (KS) goodness-of-fit test against a theoretical Pareto 
-distribution based on the estimated alpha and beta coefficients.
+maximally (positive distance) from the OLS-predicted stable log-rank baseline 
+(chord between obs 1 and obs n). It also performs a manual Kolmogorov-Smirnov (KS) 
+goodness-of-fit test against a theoretical Pareto distribution based on the 
+estimated alpha and beta coefficients.
 
 
 {title:Options}
@@ -53,7 +54,7 @@ OLS-estimated log-rank (x_obs - x_est).
 {synopt:}number of observations{p_end}
 {synopt:}estimated Zipf coefficient (b){p_end}
 {synopt:}implied Pareto exponent (-1/b){p_end}
-{synopt:}maximum positive difference between observed and estimated log-rank{p_end}
+{synopt:}maximum positive difference from baseline{p_end}
 {synopt:}rank corresponding to the bend point{p_end}
 {synopt:}item size at the bend point{p_end}
 {synopt:}calculated Kolmogorov-Smirnov test statistic (D){p_end}

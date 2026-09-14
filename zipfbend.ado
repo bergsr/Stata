@@ -15,13 +15,8 @@ program define zipfbend, rclass
     qui gen long _rank = _n
     qui gen double y = ln(`varlist')
     qui gen double x_obs = ln(_rank - 0.5)
-    
-    * 1. Full Sample Regression (Global)
-    qui regress y x_obs
-    scalar s_alpha = _b[_cons]
-    scalar s_beta = _b[x_obs]
-    
-    * 2b. Second regression based ONLY on the absolute first and last obs of TOTAL distribution
+
+    * 1. Regression based ONLY on the absolute first and last obs of TOTAL distribution
     qui count
     local global_last = r(N)
     tempvar global_base
@@ -30,18 +25,13 @@ program define zipfbend, rclass
     scalar b_alpha = _b[_cons]
     scalar b_beta = _b[x_obs]  // Stable chord slope preserved here!
     
-    * NOW apply user's if/in restrictions or sample truncation safely
-    if "`if'" != "" {
-        qui keep `if'
-    }
-    if "`in'" != "" {
-        qui keep `in'
-    }
-    
-    * 3. Calculate estimated x-values based on the STABLE second regression parameters
+         * NOW apply user's if/in restrictions or sample truncation safely
+    keep `if' `in'
+
+    * 2. Calculate estimated x-values based on the STABLE regression parameters
     qui gen double x_est = (y - b_alpha) / b_beta 
     
-    * 4. Calculate difference 
+    * 3. Calculate difference 
     qui gen double diff_x = x_obs - x_est 
     
     * Find maximum positive difference and corresponding row identifiers
@@ -53,6 +43,11 @@ program define zipfbend, rclass
     local k_rank = _rank[_N]
     local k_size = `varlist'[_N]
     local k_id   = _orig_obs[_N]
+	
+	* 4. Full Sample Regression (Global)
+    qui regress y x_obs
+    scalar s_alpha = _b[_cons]
+    scalar s_beta = _b[x_obs]
     
     * 5. Prepare Kolmogorov-Smirnov Test (remains based on Full Sample OLS)
     qui sort `varlist'
